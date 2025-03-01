@@ -23,6 +23,31 @@ func (graph *Graph) ShortestPathManyToMany(sources, targets []int64) ([][]float6
 	return graph.shortestPathManyToMany(endpoints)
 }
 
+// ShortestPathManyToManyWithPath computes and returns shortest path costs (extended Dijkstra's algorithm) between multiple sources and targets
+//
+// If there are some errors then function returns '-1.0' as cost and nil as shortest path
+//
+// sources - set of user's definied IDs of source vertices
+// targets - set of user's definied IDs of target vertices
+func (graph *Graph) ShortestPathManyToManyWithPath(sources, targets []int64) ([][]float64, error) {
+	if &sources == &targets {
+		return nil, ErrSourceAndTargetListsCanNotBeSame
+	}
+	endpoints := [directionsCount][]int64{sources, targets}
+	for d, directionEndpoints := range endpoints {
+		for i, endpoint := range directionEndpoints {
+			if _, isFound := graph.FindVertex(endpoint); !isFound {
+				return nil, ErrVertexNotFoundInGraph
+			}
+			var ok bool
+			if endpoints[d][i], ok = graph.mapping[endpoint]; !ok {
+				endpoints[d][i] = -1
+			}
+		}
+	}
+	return graph.shortestPathManyToManyWithoutPath(endpoints), nil
+}
+
 func (graph *Graph) initShortestPathManyToMany(endpointCounts [directionsCount]int) (queryDist [directionsCount][]map[int64]float64, processed [directionsCount][]map[int64]bool, queues [directionsCount][]*vertexDistHeap) {
 	for d := forward; d < directionsCount; d++ {
 		queryDist[d] = make([]map[int64]float64, endpointCounts[d])
@@ -52,6 +77,22 @@ func (graph *Graph) shortestPathManyToMany(endpoints [directionsCount][]int64) (
 		}
 	}
 	return graph.shortestPathManyToManyCore(queryDist, processed, queues)
+}
+
+func (graph *Graph) shortestPathManyToManyWithoutPath(endpoints [directionsCount][]int64) [][]float64 {
+	queryDist, processed, queues := graph.initShortestPathManyToMany([directionsCount]int{len(endpoints[forward]), len(endpoints[backward])})
+	for d := forward; d < directionsCount; d++ {
+		for endpointIdx, endpoint := range endpoints[d] {
+			processed[d][endpointIdx][endpoint] = true
+			queryDist[d][endpointIdx][endpoint] = 0
+			heapEndpoint := &vertexDist{
+				id:   endpoint,
+				dist: 0,
+			}
+			heap.Push(queues[d][endpointIdx], heapEndpoint)
+		}
+	}
+	return graph.shortestPathManyToManyWithoutPathCore(queryDist, processed, queues)
 }
 
 func (graph *Graph) shortestPathManyToManyCore(queryDist [directionsCount][]map[int64]float64, processed [directionsCount][]map[int64]bool, queues [directionsCount][]*vertexDistHeap) ([][]float64, [][][]int64) {
@@ -104,6 +145,46 @@ func (graph *Graph) shortestPathManyToManyCore(queryDist [directionsCount][]map[
 		}
 	}
 	return estimates, paths
+}
+
+func (graph *Graph) shortestPathManyToManyWithoutPathCore(queryDist [directionsCount][]map[int64]float64, processed [directionsCount][]map[int64]bool, queues [directionsCount][]*vertexDistHeap) [][]float64 {
+	var prev [directionsCount][]map[int64]int64
+	for d := forward; d < directionsCount; d++ {
+		prev[d] = make([]map[int64]int64, len(queues[d]))
+		for endpointIdx := range queues[d] {
+			prev[d][endpointIdx] = make(map[int64]int64)
+		}
+	}
+	estimates := make([][]float64, len(queues[forward]))
+	middleIDs := make([][]int64, len(queues[forward]))
+	for sourceEndpointIdx := range queues[forward] {
+		sourceEstimates := make([]float64, len(queues[backward]))
+		sourceMiddleIDs := make([]int64, len(queues[backward]))
+		estimates[sourceEndpointIdx] = sourceEstimates
+		middleIDs[sourceEndpointIdx] = sourceMiddleIDs
+		for targetEndpointIdx := range queues[backward] {
+			sourceEstimates[targetEndpointIdx] = Infinity
+			sourceMiddleIDs[targetEndpointIdx] = int64(-1)
+		}
+	}
+
+	for {
+		queuesProcessed := false
+		for d := forward; d < directionsCount; d++ {
+			reverseDirection := (d + 1) % directionsCount
+			for endpointIdx := range queues[d] {
+				if queues[d][endpointIdx].Len() == 0 {
+					continue
+				}
+				queuesProcessed = true
+				graph.directionalSearchManyToMany(d, endpointIdx, queues[d][endpointIdx], processed[d][endpointIdx], processed[reverseDirection], queryDist[d][endpointIdx], queryDist[reverseDirection], prev[d][endpointIdx], estimates, middleIDs)
+			}
+		}
+		if !queuesProcessed {
+			break
+		}
+	}
+	return estimates
 }
 
 func (graph *Graph) directionalSearchManyToMany(d direction, endpointIndex int, q *vertexDistHeap, localProcessed map[int64]bool, reverseProcessed []map[int64]bool, localQueryDist map[int64]float64, reverseQueryDist []map[int64]float64, prev map[int64]int64, estimates [][]float64, middleIDs [][]int64) {
