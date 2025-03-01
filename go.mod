@@ -1,4 +1,4 @@
-module github.com/LdDl/ch
+module github.com/ahmetfurkankavraz/contraction-hierarchy
 
 go 1.13
 
