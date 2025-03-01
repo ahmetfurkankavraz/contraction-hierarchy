@@ -23,13 +23,13 @@ func (graph *Graph) ShortestPathManyToMany(sources, targets []int64) ([][]float6
 	return graph.shortestPathManyToMany(endpoints)
 }
 
-// ShortestPathManyToManyWithPath computes and returns shortest path costs (extended Dijkstra's algorithm) between multiple sources and targets
+// ShortestPathManyToManyWithoutPath computes and returns shortest path costs (extended Dijkstra's algorithm) between multiple sources and targets
 //
 // If there are some errors then function returns '-1.0' as cost and nil as shortest path
 //
 // sources - set of user's definied IDs of source vertices
 // targets - set of user's definied IDs of target vertices
-func (graph *Graph) ShortestPathManyToManyWithPath(sources, targets []int64) ([][]float64, error) {
+func (graph *Graph) ShortestPathManyToManyWithoutPath(sources, targets []int64) ([][]float64, error) {
 	if &sources == &targets {
 		return nil, ErrSourceAndTargetListsCanNotBeSame
 	}
